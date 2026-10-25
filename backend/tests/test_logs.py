@@ -12,6 +12,7 @@ from datetime import datetime
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 from primer_report import JsonFormatter
 from tests.conftest import BACKEND, COMMIT, RELEASE
@@ -149,3 +150,19 @@ def test_the_formatter_refuses_to_start_without_a_release(
     monkeypatch.delenv("PRIMER_RELEASE", raising=False)
     with pytest.raises(RuntimeError, match="PRIMER_RELEASE"):
         JsonFormatter(service="blank")
+
+
+def test_of_two_request_id_headers_the_last_one_is_taken(
+    client_db_down: TestClient,
+) -> None:
+    """Twin REPEAT: two headers in one request -- the last one, judged alone."""
+    response = client_db_down.get(
+        "/health", headers=[("X-Request-ID", "first-id"), ("X-Request-ID", "last-id")]
+    )
+    assert response.headers.get_list("x-request-id") == ["last-id"]
+
+    response = client_db_down.get(
+        "/health", headers=[("X-Request-ID", "first-id"), ("X-Request-ID", "bad id")]
+    )
+    (taken,) = response.headers.get_list("x-request-id")
+    assert GENERATED_ID.fullmatch(taken)

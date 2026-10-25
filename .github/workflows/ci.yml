@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
         env:
           POSTGRES_USER: blank
           POSTGRES_PASSWORD: ci-only-password
@@ -91,6 +91,15 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --require-hashes -r backend/requirements-dev.lock
+      - name: Pinned base images resolve in the registry
+        # Every pinned name:tag@sha256 must resolve; the digest the tag points
+        # to now is printed beside it, for the record.
+        run: |
+          for ref in $(.venv/bin/python ci/check_image_pins.py --list); do
+            echo "== $ref"
+            docker buildx imagetools inspect "$ref" | grep -m1 '^Digest:'
+            echo "tag now -> $(docker buildx imagetools inspect "${ref%@*}" | grep -m1 '^Digest:')"
+          done
       - name: Probes of the built images
         run: .venv/bin/python -m pytest probes -v -p no:cacheprovider
 
@@ -118,8 +127,12 @@ jobs:
         run: |
           ruff check ci
           ruff format --check ci
-          mypy --strict --disallow-any-explicit ci/check_primer_yaml.py
-      - name: Selftest of the check
-        run: python ci/check_primer_yaml.py primer.yaml --selftest
+          mypy --strict --disallow-any-explicit ci/check_primer_yaml.py ci/check_image_pins.py
+      - name: Selftest of the checks
+        run: |
+          python ci/check_primer_yaml.py primer.yaml --selftest
+          python ci/check_image_pins.py --selftest
       - name: primer.yaml
         run: python ci/check_primer_yaml.py primer.yaml
+      - name: Images pinned by tag and digest
+        run: python ci/check_image_pins.py

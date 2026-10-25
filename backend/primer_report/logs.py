@@ -80,7 +80,9 @@ class RequestIdMiddleware:
     """Bind the request id for the request and echo it in the response.
 
     A well-formed ``X-Request-ID`` is kept; an absent, empty or malformed one
-    is replaced by a fresh uuid.
+    is replaced by a fresh uuid. Of several ``X-Request-ID`` headers the last
+    one is taken -- the one the nearest proxy wrote -- and judged alone: a
+    malformed last one is replaced, never an earlier one used instead.
     """
 
     def __init__(self, app: ASGIApp) -> None:
