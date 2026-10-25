@@ -1,0 +1,11 @@
+# Tests are needed by the `test` stage and so stay in the context; the
+# runtime stage leaves them out (Dockerfile). Documents never enter.
+**/*.md
+**/__pycache__/
+**/*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*

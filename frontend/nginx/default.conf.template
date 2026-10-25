@@ -1,0 +1,31 @@
+# Rendered by the nginx image's entrypoint when the container starts
+# (/etc/nginx/templates -> /etc/nginx/conf.d), with API_BASE_URL only
+# (NGINX_ENVSUBST_FILTER in the Dockerfile). API_BASE_URL is the API host
+# (contract 3 rule 18); the page gets the origin, the scheme added here.
+#
+# Without API_BASE_URL the placeholder stays as written, nginx reads it as
+# an unknown variable and refuses to start: the container does not come up.
+
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    location = /config.json {
+        default_type application/json;
+        add_header Cache-Control "no-store" always;
+        return 200 '{"apiBaseUrl":"https://${API_BASE_URL}"}';
+    }
+
+    # Hashed build output: a missing file is a 404, never the page.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    # Every other path is a route of the single-page app.
+    location / {
+        add_header Cache-Control "no-cache" always;
+        try_files $uri /index.html;
+    }
+}

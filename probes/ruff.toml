@@ -1,0 +1,5 @@
+extend = "../backend/pyproject.toml"
+
+[lint.per-file-ignores]
+# Probes assert, call docker by name, and carry the card's probe names.
+"*" = ["S101", "S603", "S607", "N802"]

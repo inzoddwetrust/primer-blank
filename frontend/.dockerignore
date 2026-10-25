@@ -1,0 +1,5 @@
+# The build stage needs sources and specs; the runtime stage takes only dist/.
+# Documents never enter.
+**/*.md
+node_modules/
+dist/

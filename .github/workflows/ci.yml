@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The machine whose loader checks primer.yaml (contract 3, 1.13).
+  PRIDEM_COMMIT: 84282c27b37c5e37fc2f8027e3a04d906713afc6
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: blank
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: blank_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U blank -d blank_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://blank:ci-only-password@127.0.0.1:5432/blank_test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install from the lock
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --require-hashes -r requirements-dev.lock
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Ruff
+        run: |
+          ruff check . ../probes ../ci
+          ruff format --check . ../probes ../ci
+      - name: Mypy
+        run: |
+          mypy .
+          mypy --config-file pyproject.toml ../probes
+      - name: Pytest
+        run: python -m pytest tests/ --junitxml=/tmp/junit.xml
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run type-check
+      - run: npm test
+      - run: npm run build
+
+  image:
+    name: Image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install from the lock
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --require-hashes -r backend/requirements-dev.lock
+      - name: Probes of the built images
+        run: .venv/bin/python -m pytest probes -v -p no:cacheprovider
+
+  check:
+    name: primer.yaml through pridem
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install pridem at the pinned commit (its own recipe)
+        run: |
+          git clone https://github.com/inzoddwetrust/primer.git "$RUNNER_TEMP/pridem"
+          cd "$RUNNER_TEMP/pridem"
+          git checkout --detach "$PRIDEM_COMMIT"
+          test "$(git rev-parse HEAD)" = "$PRIDEM_COMMIT"
+          python -m venv .venv
+          .venv/bin/pip install --no-index --find-links wheels/ --require-hashes -r requirements.lock
+          .venv/bin/pip install --no-deps -e .
+          .venv/bin/pip freeze --exclude-editable > "$RUNNER_TEMP/runtime.txt"
+          .venv/bin/pip install -c "$RUNNER_TEMP/runtime.txt" -e ".[dev]"
+          echo "$RUNNER_TEMP/pridem/.venv/bin" >> "$GITHUB_PATH"
+      - name: Lint the check
+        run: |
+          ruff check ci
+          ruff format --check ci
+          mypy --strict --disallow-any-explicit ci/check_primer_yaml.py
+      - name: Selftest of the check
+        run: python ci/check_primer_yaml.py primer.yaml --selftest
+      - name: primer.yaml
+        run: python ci/check_primer_yaml.py primer.yaml

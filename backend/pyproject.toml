@@ -1,0 +1,58 @@
+# Dependencies this project declares, and tool configuration.
+#
+# What installs is requirements.lock (runtime) and requirements-dev.lock
+# (runtime + dev), both with hashes, compiled from this file:
+#     pip-compile --generate-hashes --allow-unsafe -o requirements.lock pyproject.toml
+#     pip-compile --generate-hashes --allow-unsafe --extra dev -o requirements-dev.lock pyproject.toml
+# The image and CI install the locks with --require-hashes, never this file.
+
+[project]
+name = "blank-backend"
+version = "0.1.0"
+description = "primer-blank -- the backend of the Primer product template"
+requires-python = "==3.12.*"
+
+dependencies = [
+    "fastapi>=0.160,<0.170",
+    "uvicorn[standard]>=0.50,<1.0",
+    "sqlalchemy[asyncio]>=2.1,<2.2",
+    "asyncpg>=0.30,<1.0",
+    "alembic>=1.16,<2.0",
+    "pydantic>=2.12,<3.0",
+    "pydantic-settings>=2.10,<3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0,<10.0",
+    "pytest-timeout>=2.4,<3.0",
+    "httpx>=0.28,<1.0",
+    "ruff>=0.17,<0.18",
+    "mypy>=2.4,<2.5",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "N", "UP", "B", "SIM", "RUF", "ASYNC", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S603", "S607", "N802"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "primer_report"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+disallow_any_explicit = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+cache_dir = "/tmp/.pytest_cache"
+timeout = 60
+timeout_method = "thread"

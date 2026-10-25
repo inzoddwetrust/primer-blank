@@ -1,0 +1,30 @@
+{
+  "name": "blank-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "type-check": "vue-tsc --noEmit",
+    "lint": "eslint --max-warnings 0 . && prettier --check .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@vitejs/plugin-vue": "6.0.10",
+    "@vue/test-utils": "2.5.1",
+    "eslint": "9.39.5",
+    "eslint-plugin-vue": "10.11.1",
+    "happy-dom": "21.0.4",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.0",
+    "vite": "7.3.7",
+    "vitest": "5.0.5",
+    "vue-tsc": "3.3.13"
+  }
+}
