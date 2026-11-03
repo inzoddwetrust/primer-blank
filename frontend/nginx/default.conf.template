@@ -5,16 +5,40 @@
 #
 # Without API_BASE_URL the placeholder stays as written, nginx reads it as
 # an unknown variable and refuses to start: the container does not come up.
+#
+# The instance's packages (primer.yaml packages, apply: runtime) are mounted
+# read-only at /srv/skin and /srv/texts; nginx/package.js serves them, checked
+# on every request, as /skin.css and /texts.json -- an empty skin.css and {}
+# when no package is mounted: the page keeps its built-in theme and texts.
+# The module is loaded in nginx.conf (load_module, the Dockerfile).
 
 server {
     listen 80;
     server_name _;
     root /usr/share/nginx/html;
 
+    js_import primer from /usr/local/lib/primer/package.js;
+
     location = /config.json {
         default_type application/json;
         add_header Cache-Control "no-store" always;
         return 200 '{"apiBaseUrl":"https://${API_BASE_URL}"}';
+    }
+
+    location = /skin.css {
+        add_header Cache-Control "no-cache" always;
+        js_content primer.skinCss;
+    }
+
+    location = /texts.json {
+        add_header Cache-Control "no-store" always;
+        js_content primer.textsJson;
+    }
+
+    # The skin's images, as the package has them; none without a package.
+    location ^~ /skin/assets/ {
+        alias /srv/skin/assets/;
+        add_header Cache-Control "no-cache" always;
     }
 
     # Hashed build output: a missing file is a 404, never the page.

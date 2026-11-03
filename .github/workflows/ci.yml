@@ -15,8 +15,15 @@ permissions:
   contents: read
 
 env:
-  # The machine whose loader checks primer.yaml (contract 3, 1.13).
-  PRIDEM_COMMIT: 84282c27b37c5e37fc2f8027e3a04d906713afc6
+  # The machine whose loader and pridem check read primer.yaml (contract 3,
+  # 1.19: packages with apply).
+  PRIDEM_COMMIT: 81e1f66fb46532494de46e754c279ca82af2569e
+  # The published packages of the blank (DM-58), by their tags: public
+  # repositories of PACKAGES_OWNER, cloned over https.
+  PACKAGES_OWNER: VELO2026-app
+  SKIN_TAG: v1.0.0
+  TEXTS_TAG: v1.0.0
+  BRAND_TAG: v1.0.0
 
 jobs:
   backend:
@@ -100,6 +107,14 @@ jobs:
             docker buildx imagetools inspect "$ref" | grep -m1 '^Digest:'
             echo "tag now -> $(docker buildx imagetools inspect "${ref%@*}" | grep -m1 '^Digest:')"
           done
+      - name: The published packages at their tags
+        run: |
+          git clone -q --depth 1 --branch "$SKIN_TAG" "https://github.com/$PACKAGES_OWNER/primer-blank-skin.git" "$RUNNER_TEMP/skin"
+          git clone -q --depth 1 --branch "$TEXTS_TAG" "https://github.com/$PACKAGES_OWNER/primer-blank-texts.git" "$RUNNER_TEMP/texts"
+          git clone -q --depth 1 --branch "$BRAND_TAG" "https://github.com/$PACKAGES_OWNER/primer-blank-brand.git" "$RUNNER_TEMP/brand"
+          echo "PRIMER_BLANK_SKIN=$RUNNER_TEMP/skin" >> "$GITHUB_ENV"
+          echo "PRIMER_BLANK_TEXTS=$RUNNER_TEMP/texts" >> "$GITHUB_ENV"
+          echo "PRIMER_BLANK_BRAND=$RUNNER_TEMP/brand" >> "$GITHUB_ENV"
       - name: Probes of the built images
         run: .venv/bin/python -m pytest probes -v -p no:cacheprovider
 
@@ -136,3 +151,12 @@ jobs:
         run: python ci/check_primer_yaml.py primer.yaml
       - name: Images pinned by tag and digest
         run: python ci/check_image_pins.py
+      - name: The repository and its packages through pridem check
+        # The directory by its absolute path: pridem check names the verdict's
+        # first step by the directory's name, and "." has none.
+        run: |
+          git clone -q --depth 1 --branch "$SKIN_TAG" "https://github.com/$PACKAGES_OWNER/primer-blank-skin.git" "$RUNNER_TEMP/skin"
+          git clone -q --depth 1 --branch "$TEXTS_TAG" "https://github.com/$PACKAGES_OWNER/primer-blank-texts.git" "$RUNNER_TEMP/texts"
+          git clone -q --depth 1 --branch "$BRAND_TAG" "https://github.com/$PACKAGES_OWNER/primer-blank-brand.git" "$RUNNER_TEMP/brand"
+          pridem check "$GITHUB_WORKSPACE" skin="$RUNNER_TEMP/skin" texts="$RUNNER_TEMP/texts"
+          pridem check "$GITHUB_WORKSPACE" skin="$RUNNER_TEMP/brand/skin" texts="$RUNNER_TEMP/brand/texts"

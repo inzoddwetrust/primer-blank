@@ -1,0 +1,24 @@
+/* The built-in theme: every custom property the page uses, at zero
+   specificity (:where), so /skin.css -- the skin package of the instance,
+   when it has one -- overrides it whatever the order of the stylesheets.
+   Components take colors, fonts and the logo only through these properties. */
+:where(:root) {
+  --color-brand-primary: #6750a4;
+  --color-brand-on-primary: #ffffff;
+  --color-surface: #fafafa;
+  --color-text: #1c1b1f;
+  --color-link: #6750a4;
+  --font-family-base: system-ui, sans-serif;
+  --font-size-base: 16px;
+  --font-size-heading: 2rem;
+  --font-weight-heading: 600;
+  --asset-logo: url('./assets/logo.svg');
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+}

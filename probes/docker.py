@@ -39,12 +39,26 @@ def build(
     return docker(*args, str(ROOT / context), check=False)
 
 
-def run_detached(image: str, env: dict[str, str]) -> str:
-    """Start ``image`` with port 80 published on the loopback; return its id."""
+def run_detached(image: str, env: dict[str, str], volumes: tuple[str, ...] = ()) -> str:
+    """Start ``image`` with port 80 published on the loopback; return its id.
+    ``volumes`` -- ``-v`` arguments, as the machine's override gives them."""
     args = ["run", "-d", "--label", LABEL, "-p", "127.0.0.1::80"]
     for name, value in env.items():
         args += ["-e", f"{name}={value}"]
+    for volume in volumes:
+        args += ["-v", volume]
     return docker(*args, image).stdout.strip()
+
+
+def run_once(
+    image: str, volumes: tuple[str, ...], *command: str
+) -> subprocess.CompletedProcess[str]:
+    """``docker run --rm`` of ``command`` with the image's own entrypoint, as
+    the machine runs a package's ``validate``; its exit code is the caller's."""
+    args = ["run", "--rm", "--label", LABEL]
+    for volume in volumes:
+        args += ["-v", volume]
+    return docker(*args, image, *command, check=False)
 
 
 def list_files(image: str, root: str) -> list[str]:

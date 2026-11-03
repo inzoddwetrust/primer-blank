@@ -20,6 +20,20 @@ env:
   EDITION:           { source: passport, key: edition, enum: editions }
   API_BASE_URL:      { source: passport, key: domains.api }
 
+packages:
+  skin:
+    contract: ">=1,<2"
+    apply: runtime
+    validate: validate-skin <dir>
+    mount:
+      - { service: frontend, path: /srv/skin }
+  texts:
+    contract: ">=1,<2"
+    apply: runtime
+    validate: validate-texts <dir>
+    mount:
+      - { service: frontend, path: /srv/texts }
+
 host:
   domains: [frontend, api]
   routes:
