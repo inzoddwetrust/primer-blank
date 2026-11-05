@@ -8,9 +8,11 @@
 // with no package it serves {}. A text the package does not give in a
 // language is the built-in text of that language, never another language's.
 //
-// The person's language is the first of the browser's languages the product
-// has, by its primary subtag; none -- DEFAULT_LANGUAGE. Which languages an
-// instance turns on and its default come from the passport later (DM-46).
+// The person's language is the first of the browser's languages the instance
+// turns on, by its primary subtag; none -- the instance's default. Which
+// languages are on and the default come from /config.json (./config, the
+// passport through the env, protocol 5.2.2). FALLBACK_LANGUAGE is the page's
+// language before that is known -- when /config.json cannot be read.
 
 import en from './texts/en.json'
 import ru from './texts/ru.json'
@@ -23,7 +25,7 @@ export interface Texts {
 
 export const BUILT_IN: Readonly<Record<string, Texts>> = { en, ru }
 
-export const DEFAULT_LANGUAGE = 'en'
+export const FALLBACK_LANGUAGE = 'en'
 
 export class TextsError extends Error {
   constructor(message: string) {
@@ -34,14 +36,18 @@ export class TextsError extends Error {
 
 export const TEXTS_PATH = '/texts.json'
 
-export function chooseLanguage(preferred: readonly string[]): string {
+export function chooseLanguage(
+  preferred: readonly string[],
+  enabled: readonly string[],
+  fallback: string,
+): string {
   for (const tag of preferred) {
     const primary = tag.toLowerCase().split('-')[0] ?? ''
-    if (Object.hasOwn(BUILT_IN, primary)) {
+    if (enabled.includes(primary)) {
       return primary
     }
   }
-  return DEFAULT_LANGUAGE
+  return fallback
 }
 
 function builtIn(language: string): Texts {

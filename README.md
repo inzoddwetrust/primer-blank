@@ -9,13 +9,17 @@ from `primer.yaml`; a new project starts as a copy of it.
 - `backend/` -- the API. `primer_report/` serves `/health` and `/ready` and
   writes JSON logs (TZ section 11); `app/main.py` mounts it.
 - `frontend/` -- the page. It reads `/config.json`, which its container
-  renders from `API_BASE_URL` at start; the image carries no instance value.
-  Its colors, fonts and logo are CSS custom properties (`src/theme.css`, the
-  built-in theme). Its texts are built in for its two languages,
-  `src/texts/en.json` and `src/texts/ru.json`: these files are the product's
-  languages. The page speaks the first of the browser's languages it has,
-  else English; which languages an instance turns on comes from the passport
-  later (`languages`, not yet known to the machine).
+  renders from `API_BASE_URL`, `LANGUAGES` and `DEFAULT_LANGUAGE` at start;
+  the image carries no instance value. Its colors, fonts and logo are CSS
+  custom properties (`src/theme.css`, the built-in theme). Its texts are built
+  in for its two languages, `src/texts/en.json` and `src/texts/ru.json`: these
+  files are the product's languages, declared as `languages: [en, ru]` in
+  `primer.yaml`. An instance turns some of them on in its passport
+  (`languages`, `default_language`); the machine checks them against the
+  product's and gives them as `LANGUAGES` (codes by commas, the passport's
+  order) and `DEFAULT_LANGUAGE`. The page speaks the first of the browser's
+  languages the instance turns on, else the instance's default; a list or a
+  default that is not the product's is an error the page shows.
 - `packages` of `primer.yaml` -- the slots `skin` and `texts` of an instance,
   applied at run time: the machine mounts the packages the passport names at
   `/srv/skin` and `/srv/texts`, read-only. `frontend/nginx/package.js` serves

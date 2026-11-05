@@ -8,6 +8,8 @@ STACK_ENV = {
     "POSTGRES_PASSWORD": "probe-password",
     "EDITION": "core",
     "API_BASE_URL": "api.probe.test",
+    "LANGUAGES": "en,ru",
+    "DEFAULT_LANGUAGE": "en",
 }
 
 

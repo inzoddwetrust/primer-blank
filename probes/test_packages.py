@@ -21,7 +21,11 @@ import pytest
 
 from probes.docker import docker, run_detached, run_once, wait_http
 
-API = {"API_BASE_URL": "api.packages.test"}
+API = {
+    "API_BASE_URL": "api.packages.test",
+    "LANGUAGES": "en,ru",
+    "DEFAULT_LANGUAGE": "en",
+}
 
 
 @pytest.fixture(scope="session")

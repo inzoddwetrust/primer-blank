@@ -26,6 +26,8 @@ services:
       target: runtime
     environment:
       API_BASE_URL: ${API_BASE_URL:?}
+      LANGUAGES: ${LANGUAGES:?}
+      DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:?}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/config.json"]
       interval: 10s

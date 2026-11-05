@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { RuntimeConfig } from './config'
-import { BUILT_IN, DEFAULT_LANGUAGE, type Texts } from './texts'
+import { BUILT_IN, FALLBACK_LANGUAGE, type Texts } from './texts'
 
 withDefaults(
   defineProps<{
@@ -8,7 +8,7 @@ withDefaults(
     error: string | null
     texts?: Texts
   }>(),
-  { texts: () => BUILT_IN[DEFAULT_LANGUAGE] as Texts },
+  { texts: () => BUILT_IN[FALLBACK_LANGUAGE] as Texts },
 )
 </script>
 

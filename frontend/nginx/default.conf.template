@@ -1,10 +1,13 @@
 # Rendered by the nginx image's entrypoint when the container starts
-# (/etc/nginx/templates -> /etc/nginx/conf.d), with API_BASE_URL only
-# (NGINX_ENVSUBST_FILTER in the Dockerfile). API_BASE_URL is the API host
-# (contract 3 rule 18); the page gets the origin, the scheme added here.
+# (/etc/nginx/templates -> /etc/nginx/conf.d), with API_BASE_URL, LANGUAGES
+# and DEFAULT_LANGUAGE only (NGINX_ENVSUBST_FILTER in the Dockerfile).
+# API_BASE_URL is the API host (contract 3 rule 18); the page gets the origin,
+# the scheme added here. LANGUAGES -- the instance's languages, codes by commas
+# in the passport's order -- and DEFAULT_LANGUAGE, one of them (protocol
+# 5.2.2), go to the page as they are; it checks them (src/config.ts).
 #
-# Without API_BASE_URL the placeholder stays as written, nginx reads it as
-# an unknown variable and refuses to start: the container does not come up.
+# Without one of them the placeholder stays as written, nginx reads it as an
+# unknown variable and refuses to start: the container does not come up.
 #
 # The instance's packages (primer.yaml packages, apply: runtime) are mounted
 # read-only at /srv/skin and /srv/texts; nginx/package.js serves them, checked
@@ -22,7 +25,7 @@ server {
     location = /config.json {
         default_type application/json;
         add_header Cache-Control "no-store" always;
-        return 200 '{"apiBaseUrl":"https://${API_BASE_URL}"}';
+        return 200 '{"apiBaseUrl":"https://${API_BASE_URL}","languages":"${LANGUAGES}","defaultLanguage":"${DEFAULT_LANGUAGE}"}';
     }
 
     location = /skin.css {

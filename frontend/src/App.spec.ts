@@ -4,10 +4,12 @@ import App from './App.vue'
 import source from './App.vue?raw'
 import { BUILT_IN } from './texts'
 
+const CONFIG = { apiOrigin: 'https://api.example.com', languages: ['en'], defaultLanguage: 'en' }
+
 describe('App', () => {
   it('shows the API origin it was configured with', () => {
     const wrapper = mount(App, {
-      props: { config: { apiOrigin: 'https://api.example.com' }, error: null },
+      props: { config: CONFIG, error: null },
     })
     expect(wrapper.get('[data-test="api-origin"]').text()).toContain('https://api.example.com')
     expect(wrapper.find('[data-test="config-error"]').exists()).toBe(false)
@@ -22,7 +24,7 @@ describe('App', () => {
   it('says everything in the texts it is given, the built-in ones by default', () => {
     const texts = { title: 'Primer Blank', config_error: 'Settings:', api_label: 'Server:' }
     const given = mount(App, {
-      props: { config: { apiOrigin: 'https://api.example.com' }, error: null, texts },
+      props: { config: CONFIG, error: null, texts },
     })
     expect(given.get('[data-test="title"]').text()).toBe('Primer Blank')
     expect(given.get('[data-test="api-origin"]').text()).toBe('Server: https://api.example.com')

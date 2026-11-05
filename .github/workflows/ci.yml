@@ -15,9 +15,9 @@ permissions:
   contents: read
 
 env:
-  # The machine whose loader and pridem check read primer.yaml (contract 3,
-  # 1.19: packages with apply).
-  PRIDEM_COMMIT: 81e1f66fb46532494de46e754c279ca82af2569e
+  # The machine whose loader and pridem check read primer.yaml (DM-46: the
+  # product's languages).
+  PRIDEM_COMMIT: eec48fef9ac96c759c35d97e49ec4687d12afeca
   # The published packages of the blank (DM-58), by their tags: public
   # repositories of PACKAGES_OWNER, cloned over https.
   PACKAGES_OWNER: VELO2026-app

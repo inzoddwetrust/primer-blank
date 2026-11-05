@@ -5,6 +5,8 @@ kind: product
 editions:
   core: { services: [] }
 
+languages: [en, ru]                   # every language the product has: its built-in texts
+
 stacks:
   blank:
     compose: docker-compose.yml
@@ -19,6 +21,8 @@ env:
   POSTGRES_PASSWORD: { source: minted }
   EDITION:           { source: passport, key: edition, enum: editions }
   API_BASE_URL:      { source: passport, key: domains.api }
+  LANGUAGES:         { source: passport, key: languages }          # the instance's, by commas
+  DEFAULT_LANGUAGE:  { source: passport, key: default_language }
 
 packages:
   skin:
