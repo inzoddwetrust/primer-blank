@@ -14,11 +14,13 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from app.database import script_head
 from primer_report import JsonFormatter
 from tests.conftest import BACKEND, COMMIT, RELEASE
 
-# TZ section 11, written out here and not imported from primer_report.
+# Protocol 9.4, written out here and not imported from primer_report.
 FIELDS = ["ts", "level", "service", "release", "request_id", "event", "msg"]
+CTX = "ctx"
 
 LEVELS = {"debug", "info", "warning", "error", "critical"}
 GENERATED_ID = re.compile(r"^[0-9a-f]{32}$")
@@ -91,6 +93,13 @@ def _serve_and_log(
 
 
 def test_probe_DM_26_logs_are_json_with_fixed_fields(unreachable_url: str) -> None:
+    """Every line: the seven fields of protocol 9.4 and, given, ``ctx`` last.
+
+    Changed by DM-66 (protocol 9.1/9.4 v1.7: the optional ``details``,
+    ``ctx``; 9.5: a revision that is not read is ``db: error``): a line may
+    carry ``ctx``, checked apart from the seven -- an object; ``app.started``
+    carries the edition and the migrations' head.
+    """
     sent = [
         {},
         {"X-Request-ID": "probe-26.a_b"},
@@ -104,7 +113,11 @@ def test_probe_DM_26_logs_are_json_with_fixed_fields(unreachable_url: str) -> No
     assert lines
     records = [json.loads(line) for line in lines]
     for record in records:
-        assert list(record) == FIELDS
+        if CTX in record:
+            assert list(record) == [*FIELDS, CTX]
+            assert isinstance(record[CTX], dict)
+        else:
+            assert list(record) == FIELDS
         assert record["level"] in LEVELS
         assert record["service"] == "blank"
         assert record["release"] == RELEASE
@@ -116,6 +129,7 @@ def test_probe_DM_26_logs_are_json_with_fixed_fields(unreachable_url: str) -> No
     started = [r for r in records if r["event"] == "app.started"]
     assert len(started) == 1
     assert started[0]["request_id"] is None
+    assert started[0][CTX] == {"edition": "core", "script_head": script_head()}
 
     access = [
         r for r in records if r["event"] == "uvicorn.access" and "/health" in r["msg"]
@@ -166,3 +180,52 @@ def test_of_two_request_id_headers_the_last_one_is_taken(
     )
     (taken,) = response.headers.get_list("x-request-id")
     assert GENERATED_ID.fullmatch(taken)
+
+
+def _line_with(monkeypatch: pytest.MonkeyPatch, **extra: object) -> dict[str, object]:
+    monkeypatch.setenv("PRIMER_RELEASE", RELEASE)
+    record = logging.getLogger("t").makeRecord(
+        "t", logging.INFO, __file__, 1, "done", (), None, extra=extra
+    )
+    line = JsonFormatter(service="blank").format(record)
+    parsed: dict[str, object] = json.loads(line)
+    return parsed
+
+
+def test_a_ctx_object_is_written_last(monkeypatch: pytest.MonkeyPatch) -> None:
+    ctx = {"job": "7", "sqlstate": "40001", "nested": {"n": [1, 2]}}
+    parsed = _line_with(monkeypatch, event="job.failed", ctx=ctx)
+    assert list(parsed) == [*FIELDS, CTX]
+    assert parsed[CTX] == ctx
+    assert parsed["event"] == "job.failed"
+
+
+def test_no_ctx_leaves_the_seven_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert list(_line_with(monkeypatch, event="x")) == FIELDS
+
+
+@pytest.mark.parametrize(
+    "ctx",
+    ["job 7", ["job", 7], 7, None, {"when": datetime(2026, 11, 5)}],
+    ids=["text", "list", "number", "null", "not-json-inside"],
+)
+def test_a_ctx_that_is_not_a_json_object_is_left_out(
+    ctx: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The line is still written, with its seven fields and no ``ctx``."""
+    parsed = _line_with(monkeypatch, event="x", ctx=ctx)
+    assert list(parsed) == FIELDS
+    assert parsed["msg"] == "done"
+
+
+def test_an_empty_ctx_is_written_as_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Twin EMPTY: ``{}`` is an object -- written, not dropped."""
+    parsed = _line_with(monkeypatch, ctx={})
+    assert list(parsed) == [*FIELDS, CTX]
+    assert parsed[CTX] == {}
+
+
+def test_a_ctx_over_8_kb_is_written_whole(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The stack does not cut: over 8 KB the deploy machine does (9.4)."""
+    ctx = {"tail": "x" * 9 * 1024}
+    assert _line_with(monkeypatch, ctx=ctx)[CTX] == ctx

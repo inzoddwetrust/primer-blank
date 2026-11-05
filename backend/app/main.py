@@ -8,7 +8,7 @@ from functools import partial
 from fastapi import FastAPI
 
 from app.config import Settings
-from app.database import database_url, make_engine, measure, script_head
+from app.database import at_head, database_url, make_engine, read_revision, script_head
 from app.editions import EDITIONS
 from primer_report import Limits, PrimerReport, Seams
 
@@ -33,7 +33,10 @@ def create_app(settings: Settings | None = None, url: str | None = None) -> Fast
             "edition %s, migrations head %s",
             settings.edition,
             head,
-            extra={"event": "app.started"},
+            extra={
+                "event": "app.started",
+                "ctx": {"edition": settings.edition, "script_head": head},
+            },
         )
         yield
         await engine.dispose()
@@ -47,7 +50,9 @@ def create_app(settings: Settings | None = None, url: str | None = None) -> Fast
         modules=list(EDITIONS[settings.edition]),
         limits=Limits(max_upload_mb=MAX_UPLOAD_MB),
         seams=Seams(provides=[], requires_satisfied=True),
-        collect=partial(measure, engine, head),
+        db=partial(read_revision, engine),
+        head_checks={"schema": at_head(head)},
+        details=lambda: {"script_head": head},
     )
     report.install(app)
     return app

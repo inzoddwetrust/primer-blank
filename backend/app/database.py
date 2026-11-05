@@ -1,25 +1,21 @@
 """The database: its URL, the engine, and what ``/health`` measures in it."""
 
-import asyncio
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from primer_report import Snapshot
+from primer_report import CHECK_TIMEOUT_S
 
 ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
 
-# A health request must answer even when the database does not: the connect
-# attempt gives up after CONNECT_TIMEOUT_S, the whole measurement after
-# MEASURE_TIMEOUT_S.
-CONNECT_TIMEOUT_S = 2
-MEASURE_TIMEOUT_S = 3
+# A connect attempt gives up no later than a health check does.
+CONNECT_TIMEOUT_S = CHECK_TIMEOUT_S
 
 
 def database_url() -> str:
@@ -46,21 +42,23 @@ def script_head() -> str:
     return head
 
 
-async def _revision(engine: AsyncEngine) -> str | None:
+async def read_revision(engine: AsyncEngine) -> str:
+    """The database's revision, in one query -- the ``db`` check of ``/health``.
+
+    No ``alembic_version`` (a clean database) and an empty one both raise:
+    a revision that cannot be read is ``db: error`` (protocol 9.5).
+    """
     async with engine.connect() as conn:
-        exists = await conn.scalar(text("SELECT to_regclass('alembic_version')"))
-        if exists is None:
-            return None
         revision = await conn.scalar(text("SELECT version_num FROM alembic_version"))
-        return revision if isinstance(revision, str) else None
+    if not isinstance(revision, str) or not revision:
+        raise LookupError("alembic_version holds no revision")
+    return revision
 
 
-async def measure(engine: AsyncEngine, head: str) -> Snapshot:
-    """``db``: the database answers; ``schema``: it stands at ``head``."""
-    try:
-        revision = await asyncio.wait_for(_revision(engine), MEASURE_TIMEOUT_S)
-    except (OSError, TimeoutError, SQLAlchemyError):
-        return Snapshot(checks={"db": False, "schema": False}, alembic_head=None)
-    return Snapshot(
-        checks={"db": True, "schema": revision == head}, alembic_head=revision
-    )
+def at_head(head: str) -> Callable[[str], bool]:
+    """The ``schema`` check: the revision read is ``head``."""
+
+    def judge(revision: str) -> bool:
+        return revision == head
+
+    return judge

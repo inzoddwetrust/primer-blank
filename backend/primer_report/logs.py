@@ -1,10 +1,16 @@
 """JSON log lines of TZ section 11 and the request id they carry.
 
-Every line is one JSON object with exactly ``LOG_FIELDS``. ``event`` is the
-``event`` given to the log call (``extra={"event": ...}``), else the logger
-name; ``msg`` is the message with the traceback, if any, inside it, so a line
-is always one line. ``request_id`` is the id of the request being served, or
-``null`` outside a request.
+Every line is one JSON object with ``LOG_FIELDS`` and, when the log call
+gives one, ``LOG_CTX`` last (protocol 9.4). ``event`` is the ``event`` given
+to the log call (``extra={"event": ...}``), else the logger name; ``msg`` is
+the message with the traceback, if any, inside it, so a line is always one
+line. ``request_id`` is the id of the request being served, or ``null``
+outside a request.
+
+``ctx`` is the stack's free object of the line (``extra={"ctx": {...}}``): a
+job id, an error class -- never a person's data. A ``ctx`` that is not a JSON
+object is left out and the line is written without it; one of any size is
+written whole: over 8 KB the deploy machine cuts it, not the stack.
 
 The formatter is named in a dictConfig file by ``"()"``, with ``service`` as
 its argument; the release comes from ``PRIMER_RELEASE``, which the image
@@ -25,6 +31,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 LOG_FIELDS = ("ts", "level", "service", "release", "request_id", "event", "msg")
+LOG_CTX = "ctx"
 
 REQUEST_ID: ContextVar[str | None] = ContextVar("primer_request_id", default=None)
 
@@ -36,7 +43,7 @@ _REQUEST_ID_FORM = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
 class JsonFormatter(logging.Formatter):
-    """One JSON object per record with exactly ``LOG_FIELDS``."""
+    """One JSON object per record: ``LOG_FIELDS``, then ``LOG_CTX`` if given."""
 
     def __init__(self, service: str) -> None:
         super().__init__()
@@ -57,7 +64,7 @@ class JsonFormatter(logging.Formatter):
         if record.stack_info:
             msg = f"{msg}\n{self.formatStack(record.stack_info)}"
         event = record.__dict__.get("event")
-        line = {
+        line: dict[str, object] = {
             "ts": datetime.fromtimestamp(record.created, UTC)
             .isoformat(timespec="milliseconds")
             .replace("+00:00", "Z"),
@@ -68,7 +75,21 @@ class JsonFormatter(logging.Formatter):
             "event": event if isinstance(event, str) and event else record.name,
             "msg": msg,
         }
+        ctx = record.__dict__.get(LOG_CTX)
+        if _json_object(ctx):
+            line[LOG_CTX] = ctx
         return json.dumps(line, ensure_ascii=False)
+
+
+def _json_object(value: object) -> bool:
+    """``value`` is a dict that serializes to JSON as it is."""
+    if not isinstance(value, dict):
+        return False
+    try:
+        json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError, RecursionError):
+        return False
+    return True
 
 
 def configure_logging(config_file: Path) -> None:
