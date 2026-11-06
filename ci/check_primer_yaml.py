@@ -25,7 +25,8 @@ from pridem.stacks.schema import load_primer_yaml
 
 def _alias(text: str) -> str:
     return text.replace(
-        "  core: { services: [] }", "  core: &core { services: [] }\n  full: *core"
+        "  core: { services: [primer-blank-service] }",
+        "  core: &core { services: [primer-blank-service] }\n  full: *core",
     )
 
 

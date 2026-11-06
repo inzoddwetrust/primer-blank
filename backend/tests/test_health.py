@@ -17,6 +17,7 @@ from tests.conftest import (
     COMMIT,
     PROTOCOL_CHECK_TIMEOUT_S,
     RELEASE,
+    SERVICE_SEAMS,
     alembic_config,
     client_for,
     execute,
@@ -59,6 +60,11 @@ def test_probe_DM_26_health_matches_schema_11(
     9.5: a revision that is not read is ``db: error``): the blank's
     ``details`` is checked apart from the eleven fields, and a clean database
     is ``db: error``, no longer ``db: ok``.
+
+    Changed by DM-59 (protocol 4, contract 3 rule 21; the gate's answer,
+    item 3: ``/health.seams`` as it is): the blank provides
+    ``PRODUCT_WEBHOOK_URL`` to its service and its requires are the service's
+    three seams -- ``seams`` is no longer ``[]`` and ``True`` by constant.
     """
     client: TestClient = request.getfixturevalue(state)
     response = client.get("/health")
@@ -78,7 +84,10 @@ def test_probe_DM_26_health_matches_schema_11(
     assert body["commit"] == COMMIT
     assert type(body["uptime_s"]) is int
     assert body["uptime_s"] >= 0
-    assert body["seams"] == {"provides": [], "requires_satisfied": True}
+    assert body["seams"] == {
+        "provides": ["PRODUCT_WEBHOOK_URL"],
+        "requires_satisfied": True,
+    }
     assert body["limits"] == {"max_upload_mb": MAX_UPLOAD_MB}
     assert body["edition"] == "core"
     assert body["modules"] == []
@@ -239,3 +248,29 @@ def test_read_revision_raises_on_an_empty_alembic_version(migrated_db: str) -> N
             asyncio.run(read_revision(engine))
     finally:
         asyncio.run(engine.dispose())
+
+
+@pytest.mark.parametrize("missing", ["SERVICE_API_URL", "SERVICE_TOKEN", "SERVICE_KEY"])
+def test_requires_satisfied_follows_every_seam_of_the_service(
+    missing: str, test_url: str
+) -> None:
+    """DM-59, twin LACK: a seam of the service did not come -- the blank says
+    so; the machine's ``seams_verify`` reads it (``requires-unsatisfied``)."""
+    seams = {**SERVICE_SEAMS, missing: ""}
+    given = Settings.model_validate(
+        {"EDITION": "core", "PRIMER_RELEASE": RELEASE, "PRIMER_COMMIT": COMMIT, **seams}
+    )
+    for client in client_for(create_app(given, test_url)):
+        body = client.get("/health").json()
+        assert body["seams"] == {
+            "provides": ["PRODUCT_WEBHOOK_URL"],
+            "requires_satisfied": False,
+        }
+
+
+def test_the_webhook_the_blank_provides_is_served(
+    client_at_head: TestClient,
+) -> None:
+    """``PRODUCT_WEBHOOK_URL`` names a route the backend has, not a promise."""
+    response = client_at_head.post("/internal/service/webhook", json={"x": 1})
+    assert response.status_code == 204

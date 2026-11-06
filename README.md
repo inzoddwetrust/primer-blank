@@ -6,6 +6,12 @@ from `primer.yaml`; a new project starts as a copy of it.
 
 - `primer.yaml` -- what the machine installs: one stack, edition `core`, the
   sources of its environment, routes for the frontend and the API.
+- `dependencies` of `primer.yaml` -- the machine's test service
+  `primer-blank-service`, in every edition: the product takes three seams of
+  it (`SERVICE_API_URL`, `SERVICE_TOKEN`, `SERVICE_KEY`), gives it
+  `PRODUCT_WEBHOOK_URL` (`POST /internal/service/webhook`) and the data
+  `profile/`; `primer.lock` pins its tag and commit. Its address is the
+  `file://` mirror tier 3 of `pridem` keeps: the blank exists for that tier.
 - `backend/` -- the API. `primer_report/` serves `/health` and `/ready` and
   writes JSON logs (TZ section 11); `app/main.py` mounts it.
 - `frontend/` -- the page. It reads `/config.json`, which its container

@@ -2,8 +2,14 @@ schema: 1
 name: blank
 kind: product
 
-editions:
-  core: { services: [] }
+dependencies:                         # the machine's test service (DM-59); exact version -- primer.lock
+  primer-blank-service:
+    repo: file:///srv/tier3/primer-blank-service.git   # tier 3 puts the service's mirror here
+    version: ">=1,<2"
+    data: { profile: profile }        # form D: profile/ goes to the service, its validate checks it
+
+editions:                             # a service the product takes a seam from is in every edition (rule 41)
+  core: { services: [primer-blank-service] }
 
 languages: [en, ru]                   # every language the product has: its built-in texts
 
@@ -23,6 +29,12 @@ env:
   API_BASE_URL:      { source: passport, key: domains.api }
   LANGUAGES:         { source: passport, key: languages }          # the instance's, by commas
   DEFAULT_LANGUAGE:  { source: passport, key: default_language }
+  SERVICE_API_URL:   { source: seam, from: primer-blank-service }   # its address
+  SERVICE_TOKEN:     { source: seam, from: primer-blank-service }   # minted by it
+  SERVICE_KEY:       { source: seam, from: primer-blank-service }   # derived by it
+
+provides:                             # what the product gives its service
+  PRODUCT_WEBHOOK_URL: { from: domains.api, path: /internal/service/webhook }
 
 packages:
   skin:

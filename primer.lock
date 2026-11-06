@@ -1,0 +1,4 @@
+schema: 1
+resolved_at: 2026-11-06T00:00:00Z
+dependencies:
+  primer-blank-service: { version: "1.0.0", tag: v1.0.0, commit: 883e3ce4568a5f379737af13c6e2ee21d2810421 }

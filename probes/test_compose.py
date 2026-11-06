@@ -10,6 +10,9 @@ STACK_ENV = {
     "API_BASE_URL": "api.probe.test",
     "LANGUAGES": "en,ru",
     "DEFAULT_LANGUAGE": "en",
+    "SERVICE_API_URL": "http://primer-blank-service-app:8000",
+    "SERVICE_TOKEN": "probe-service-token-0000000000000001",
+    "SERVICE_KEY": "sk_probe-service-key-00000000000001",
 }
 
 

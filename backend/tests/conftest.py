@@ -127,9 +127,24 @@ def query_scalar(url: str, statement: str) -> object:
     return asyncio.run(run())
 
 
+# The service's seams as the machine renders them (DM-59); invented values.
+SERVICE_SEAMS = {
+    "SERVICE_API_URL": "http://primer-blank-service-app:8000",
+    "SERVICE_TOKEN": "invented-service-token-000000000000001",
+    "SERVICE_KEY": "sk_invented-service-key-0000000000001",
+}
+
+
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(EDITION="core", PRIMER_RELEASE=RELEASE, PRIMER_COMMIT=COMMIT)
+    return Settings.model_validate(
+        {
+            "EDITION": "core",
+            "PRIMER_RELEASE": RELEASE,
+            "PRIMER_COMMIT": COMMIT,
+            **SERVICE_SEAMS,
+        }
+    )
 
 
 def client_for(app: FastAPI) -> Iterator[TestClient]:
