@@ -1,4 +1,4 @@
-# The stack `blank` of primer.yaml. The machine names the compose project
+# The stack `primer-blank` of primer.yaml. The machine names the compose project
 # (-p) and passes the stack's env with --env-file; every variable below is
 # required, ${VAR:?} (contract 3 rule 18).
 

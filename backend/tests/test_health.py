@@ -1,6 +1,7 @@
 """``/health`` and ``/ready`` in every state of the database."""
 
 import asyncio
+import logging
 import time
 
 import pytest
@@ -65,6 +66,10 @@ def test_probe_DM_26_health_matches_schema_11(
     item 3: ``/health.seams`` as it is): the blank provides
     ``PRODUCT_WEBHOOK_URL`` to its service and its requires are the service's
     three seams -- ``seams`` is no longer ``[]`` and ``True`` by constant.
+
+    Changed by DM-70 (by the dispatcher's word, before the change): the stack
+    is named by its repository; the blank is ``name: primer-blank`` (contract
+    3 rule 32, DM-70).
     """
     client: TestClient = request.getfixturevalue(state)
     response = client.get("/health")
@@ -79,7 +84,7 @@ def test_probe_DM_26_health_matches_schema_11(
     assert body["status"] == status
     assert body["checks"] == checks
     assert body["alembic_head"] == (script_head() if at_head else None)
-    assert body["service"] == "blank"
+    assert body["service"] == "primer-blank"
     assert body["release"] == RELEASE
     assert body["commit"] == COMMIT
     assert type(body["uptime_s"]) is int
@@ -268,9 +273,79 @@ def test_requires_satisfied_follows_every_seam_of_the_service(
         }
 
 
-def test_the_webhook_the_blank_provides_is_served(
+WEBHOOK = "/internal/service/webhook"
+TOKEN = SERVICE_SEAMS["SERVICE_TOKEN"]
+
+
+@pytest.mark.parametrize(
+    ("authorization", "code"),
+    [
+        (f"Bearer {TOKEN}", 204),
+        (f"bearer {TOKEN}", 204),  # the scheme in any case (RFC 7235)
+        (None, 401),
+        ("Bearer invented-other-token-0000000000001", 401),
+        ("Bearer ", 401),
+        (f"Token {TOKEN}", 401),
+        (TOKEN, 401),
+        (f"Bearer  {TOKEN}", 401),  # the token exactly: no space before it
+        (f"Bearer {TOKEN}x", 401),
+    ],
+    ids=[
+        "own",
+        "own-lower",
+        "none",
+        "other",
+        "empty",
+        "scheme",
+        "bare",
+        "space",
+        "longer",
+    ],
+)
+def test_the_webhook_takes_only_its_service(
+    authorization: str | None, code: int, client_at_head: TestClient
+) -> None:
+    """DM-70: ``PRODUCT_WEBHOOK_URL`` is on the public ``api`` domain, so the
+    route answers its service alone -- ``Authorization: Bearer
+    <SERVICE_TOKEN>``; any other caller gets 401. The pair: own -- 204."""
+    headers = {} if authorization is None else {"Authorization": authorization}
+    response = client_at_head.post(WEBHOOK, json={"x": 1}, headers=headers)
+    assert response.status_code == code
+    if code == 401:
+        assert response.headers["www-authenticate"] == "Bearer"
+        assert TOKEN not in response.text
+
+
+def test_a_second_authorization_does_not_override_the_first(
     client_at_head: TestClient,
 ) -> None:
-    """``PRODUCT_WEBHOOK_URL`` names a route the backend has, not a promise."""
-    response = client_at_head.post("/internal/service/webhook", json={"x": 1})
-    assert response.status_code == 204
+    """Twin REPEAT: two headers, the first foreign -- the first decides."""
+    headers = [("Authorization", "Bearer other"), ("Authorization", f"Bearer {TOKEN}")]
+    response = client_at_head.post(WEBHOOK, headers=headers)
+    assert response.status_code == 401
+    assert client_at_head.post(WEBHOOK, headers=headers[1:]).status_code == 204
+
+
+def test_no_token_in_the_environment_lets_nobody_in(test_url: str) -> None:
+    """Twin EMPTY: no ``SERVICE_TOKEN`` -- not "empty equals empty": 401."""
+    given = Settings.model_validate(
+        {
+            "EDITION": "core",
+            "PRIMER_RELEASE": RELEASE,
+            "PRIMER_COMMIT": COMMIT,
+            **{**SERVICE_SEAMS, "SERVICE_TOKEN": ""},
+        }
+    )
+    for client in client_for(create_app(given, test_url)):
+        for authorization in ("Bearer ", "Bearer x", f"Bearer {TOKEN}"):
+            response = client.post(WEBHOOK, headers={"Authorization": authorization})
+            assert response.status_code == 401, authorization
+
+
+def test_the_token_never_reaches_the_log(
+    client_at_head: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    client_at_head.post(WEBHOOK, headers={"Authorization": f"Bearer {TOKEN}"})
+    client_at_head.post(WEBHOOK, headers={"Authorization": f"Bearer {TOKEN}x"})
+    assert TOKEN not in caplog.text

@@ -99,6 +99,10 @@ def test_probe_DM_26_logs_are_json_with_fixed_fields(unreachable_url: str) -> No
     ``ctx``; 9.5: a revision that is not read is ``db: error``): a line may
     carry ``ctx``, checked apart from the seven -- an object; ``app.started``
     carries the edition and the migrations' head.
+
+    Changed by DM-70 (by the dispatcher's word, before the change): the stack
+    is named by its repository; the blank is ``name: primer-blank`` (contract
+    3 rule 32, DM-70).
     """
     sent = [
         {},
@@ -119,7 +123,7 @@ def test_probe_DM_26_logs_are_json_with_fixed_fields(unreachable_url: str) -> No
         else:
             assert list(record) == FIELDS
         assert record["level"] in LEVELS
-        assert record["service"] == "blank"
+        assert record["service"] == "primer-blank"
         assert record["release"] == RELEASE
         assert isinstance(record["event"], str)
         assert record["event"]

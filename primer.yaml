@@ -1,5 +1,5 @@
 schema: 1
-name: blank
+name: primer-blank                    # the name of its repository (contract 3 rule 32)
 kind: product
 
 dependencies:                         # the machine's test service (DM-59); exact version -- primer.lock
@@ -14,7 +14,7 @@ editions:                             # a service the product takes a seam from 
 languages: [en, ru]                   # every language the product has: its built-in texts
 
 stacks:
-  blank:
+  primer-blank:                       # the stack's own entry: named as the stack
     compose: docker-compose.yml
     app:      { service: app, port: 8000, health: /health, ready: /ready }
     frontend: { service: frontend, port: 80 }

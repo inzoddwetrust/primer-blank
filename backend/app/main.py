@@ -1,18 +1,19 @@
 """The ASGI application: ``uvicorn --factory app.main:create_app``."""
 
+import hmac
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import partial
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 
 from app.config import Settings
 from app.database import at_head, database_url, make_engine, read_revision, script_head
 from app.editions import EDITIONS
 from primer_report import Limits, PrimerReport, Seams
 
-SERVICE = "blank"
+SERVICE = "primer-blank"
 
 # The largest request body the backend accepts, reported in /health.limits
 # for the machine to compare with routes.api.max_body of primer.yaml.
@@ -23,6 +24,18 @@ MAX_UPLOAD_MB = 1
 # says it serves it.
 PROVIDES = ["PRODUCT_WEBHOOK_URL"]
 WEBHOOK = "/internal/service/webhook"
+
+
+def from_the_service(authorization: str | None, settings: Settings) -> bool:
+    """``Authorization: Bearer <SERVICE_TOKEN>`` -- the scheme in any case
+    (RFC 7235), the token exactly. An empty token is never one: with no token
+    in the environment nothing equals it, so nobody passes."""
+    if authorization is None:
+        return False
+    scheme, _, given = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not given:
+        return False
+    return hmac.compare_digest(given.encode(), settings.service_token.encode())
 
 
 def requires_satisfied(settings: Settings) -> bool:
@@ -71,9 +84,12 @@ def create_app(settings: Settings | None = None, url: str | None = None) -> Fast
     report.install(app)
 
     @app.post(WEBHOOK, status_code=204)
-    async def webhook() -> Response:
-        """The service's calls land here; the blank takes them and does
-        nothing more."""
+    async def webhook(request: Request) -> Response:
+        """The service's calls land here: 204 to its own token, 401 to any
+        other caller -- the route is on the public ``api`` domain. The blank
+        takes the call and does nothing more."""
+        if not from_the_service(request.headers.get("authorization"), settings):
+            return Response(status_code=401, headers={"WWW-Authenticate": "Bearer"})
         return Response(status_code=204)
 
     return app
