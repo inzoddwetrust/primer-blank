@@ -6,7 +6,13 @@
 //   CSS custom properties -- and /texts.json -- the texts of the page by
 //   language -- from the packages the machine mounts read-only at /srv/skin
 //   and /srv/texts. No package mounted: an empty skin.css and {} -- the page
-//   keeps its built-in theme and texts;
+//   keeps its built-in theme and texts. A package is checked once: its answer
+//   is kept in the shared dictionary ``primer`` (js_shared_dict_zone,
+//   nginx/default.conf.template) by the package's root (inode, mtime). A
+//   package changes only with a new container -- the machine mounts each
+//   version from its own directory and recreates the service (DM-58) -- so
+//   the dictionary, which lives as long as the container, never serves an
+//   older package; the root's identity in the key guards a change in place;
 // - the commands validate-skin <dir> and validate-texts <dir> (validate.js,
 //   run by the njs CLI): the machine runs them in the new image before it
 //   switches a package (primer.yaml packages.*.validate);
@@ -30,6 +36,10 @@ const TEXTS_DIR = '/srv/texts'
 const BUILT_IN_DIR = '/usr/local/lib/primer/texts'
 const MANIFEST = 'primer-package.yaml'
 const CONTRACT_MAJOR = 1
+// Files and directories of a package, at most: a check reads each, so a
+// package of many files would hold a worker of nginx. The published packages
+// have under ten; a set of a few hundred icons still fits.
+const MAX_ENTRIES = 512
 
 const COMMON_FILES = [/^primer-package\.yaml$/, /^README\.md$/, /^LICENSE$/]
 const TOKEN_FILE = /^tokens\/[a-z0-9-]+\.tokens\.json$/
@@ -84,12 +94,15 @@ const FONT_WEIGHTS = {
 }
 const SVG_FORBIDDEN = [
   [/<script/i, 'a script'],
-  [/\son[a-z]+\s*=/i, 'an event handler'],
+  // an attribute starts after a space, a slash or a closing quote:
+  // <svg onload=, <svg/onload=, <svg x="1"onload=
+  [/[\s/"']on[a-z]+\s*=/i, 'an event handler'],
   [/javascript:/i, 'a javascript: address'],
   [/<foreignObject/i, 'foreignObject'],
   [/<(iframe|embed|object)/i, 'an embedded document'],
   [/<!(DOCTYPE|ENTITY)/i, 'a DOCTYPE or ENTITY'],
-  [/href\s*=\s*["']\s*[^#"'\s]/i, 'a link out of the file'],
+  // quoted or not; only a link inside the file (#id) is taken
+  [/href\s*=\s*["']?\s*[^#"'\s]/i, 'a link out of the file'],
 ]
 const TEXT_KEY = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/
 const MARKUP = /<[A-Za-z/!?]/
@@ -113,19 +126,27 @@ function isDir(path) {
 // Every regular file of the package, relative to its root; a symlink, an
 // executable file or anything that is neither a file nor a directory is a
 // problem. ".git" at the root is the worktree's link, not the package's.
-function walk(root, rel, files, problems) {
+// ``seen`` counts files and directories: the one past MAX_ENTRIES is a
+// problem, and the walk stops there.
+function walk(root, rel, files, problems, seen) {
   const path = rel ? `${root}/${rel}` : root
   const entries = fs.readdirSync(path, { withFileTypes: true })
   entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   entries.forEach((entry) => {
     const name = rel ? `${rel}/${entry.name}` : entry.name
-    if (!rel && entry.name === '.git') {
+    if (seen.over || (!rel && entry.name === '.git')) {
+      return
+    }
+    seen.count += 1
+    if (seen.count > MAX_ENTRIES) {
+      seen.over = true
+      report(problems, name, '', `past ${MAX_ENTRIES} files and directories: a package is smaller`)
       return
     }
     if (entry.isSymbolicLink()) {
       report(problems, name, '', 'a symlink: a package holds files only')
     } else if (entry.isDirectory()) {
-      walk(root, name, files, problems)
+      walk(root, name, files, problems, seen)
     } else if (entry.isFile()) {
       if (fs.statSync(`${root}/${name}`).mode & 0o111) {
         report(problems, name, '', 'executable: a package holds no code')
@@ -143,7 +164,7 @@ function packageFiles(dir, allowed, problems) {
     report(problems, dir, '', 'not a directory')
     return files
   }
-  walk(dir, '', files, problems)
+  walk(dir, '', files, problems, { count: 0, over: false })
   files.forEach((file) => {
     if (!allowed.some((pattern) => pattern.test(file))) {
       report(problems, file, '', 'not a file of this package: no scripts, HTML or code')
@@ -570,45 +591,94 @@ function answer(r, status, type, body) {
   r.return(status, body)
 }
 
+// The answer for the package of ``slot`` at ``dir``: from ``cache`` when it
+// has one for this package, else ``compute()``, then kept there. ``cache`` --
+// get(key) and set(key, value) of strings, as nginx's shared dictionary; none
+// -- computed every time. An answer: {status, type, body, error}; ``error``
+// is logged with every answer it comes with, kept or not.
+function cachedAnswer(cache, slot, dir, compute) {
+  if (cache === undefined) {
+    return compute()
+  }
+  const root = fs.statSync(dir)
+  const key = `${slot}:${root.ino}:${root.mtimeMs}`
+  const kept = cache.get(key)
+  if (kept !== undefined) {
+    return JSON.parse(kept)
+  }
+  const computed = compute()
+  cache.set(key, JSON.stringify(computed))
+  return computed
+}
+
+function send(r, given) {
+  if (given.error) {
+    r.error(given.error)
+  }
+  answer(r, given.status, given.type, given.body)
+}
+
+function skinAnswer(dir) {
+  const skin = checkSkin(dir)
+  if (skin.problems.length > 0) {
+    return {
+      status: 500,
+      type: 'text/plain; charset=utf-8',
+      body: 'the skin package is invalid\n',
+      error: `skin package: ${skin.problems.join('; ')}`,
+    }
+  }
+  return { status: 200, type: 'text/css; charset=utf-8', body: skin.css, error: '' }
+}
+
+function textsAnswer(dir, builtIn) {
+  const texts = checkTexts(dir, builtIn)
+  if (texts.problems.length > 0) {
+    return {
+      status: 500,
+      type: 'text/plain; charset=utf-8',
+      body: 'the texts package is invalid\n',
+      error: `texts package: ${texts.problems.join('; ')}`,
+    }
+  }
+  return { status: 200, type: 'application/json', body: JSON.stringify(texts.texts), error: '' }
+}
+
 // GET /skin.css: the skin at ``dir``, or none -- the built-in theme.
-function serveSkin(r, dir) {
+// ``cache`` -- as cachedAnswer.
+function serveSkin(r, dir, cache) {
   if (!isDir(dir)) {
     answer(r, 200, 'text/css; charset=utf-8', '/* no skin package: the built-in theme */\n')
     return
   }
-  const skin = checkSkin(dir)
-  if (skin.problems.length > 0) {
-    r.error(`skin package: ${skin.problems.join('; ')}`)
-    answer(r, 500, 'text/plain; charset=utf-8', 'the skin package is invalid\n')
-    return
-  }
-  answer(r, 200, 'text/css; charset=utf-8', skin.css)
+  send(
+    r,
+    cachedAnswer(cache, 'skin', dir, () => skinAnswer(dir)),
+  )
 }
 
 // GET /texts.json: the texts at ``dir`` by language, or none -- the built-in
 // texts. ``builtIn`` -- the product's built-in texts (BUILT_IN_DIR when not
-// given).
-function serveTexts(r, dir, builtIn) {
+// given); ``cache`` -- as cachedAnswer.
+function serveTexts(r, dir, builtIn, cache) {
   if (!isDir(dir)) {
     answer(r, 200, 'application/json', '{}')
     return
   }
-  const texts = checkTexts(dir, builtIn)
-  if (texts.problems.length > 0) {
-    r.error(`texts package: ${texts.problems.join('; ')}`)
-    answer(r, 500, 'text/plain; charset=utf-8', 'the texts package is invalid\n')
-    return
-  }
-  answer(r, 200, 'application/json', JSON.stringify(texts.texts))
+  send(
+    r,
+    cachedAnswer(cache, 'texts', dir, () => textsAnswer(dir, builtIn)),
+  )
 }
 
-// nginx (js_content): the packages where the machine mounts them.
+// nginx (js_content): the packages where the machine mounts them, each
+// checked once (ngx.shared.primer, nginx/default.conf.template).
 function skinCss(r) {
-  serveSkin(r, SKIN_DIR)
+  serveSkin(r, SKIN_DIR, ngx.shared.primer)
 }
 
 function textsJson(r) {
-  serveTexts(r, TEXTS_DIR)
+  serveTexts(r, TEXTS_DIR, undefined, ngx.shared.primer)
 }
 
 export default { checkSkin, checkTexts, serveSkin, serveTexts, skinCss, textsJson }

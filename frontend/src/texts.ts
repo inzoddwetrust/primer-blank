@@ -13,6 +13,10 @@
 // languages are on and the default come from /config.json (./config, the
 // passport through the env, protocol 5.2.2). FALLBACK_LANGUAGE is the page's
 // language before that is known -- when /config.json cannot be read.
+//
+// A texts package that cannot be read or is refused does not stop the page:
+// it keeps the built-in texts of its language (textsOrBuiltIn) and says why on
+// the console.
 
 import en from './texts/en.json'
 import ru from './texts/ru.json'
@@ -96,4 +100,21 @@ export async function loadTexts(language: string, fetchFn: typeof fetch = fetch)
     throw new TextsError(`${TEXTS_PATH} is not JSON`)
   }
   return parseTexts(body, language)
+}
+
+// The texts of ``language`` from /texts.json, or -- when the answer is not one
+// (not 200, not JSON, not texts, no answer at all) -- its built-in texts, the
+// reason given to ``report``. ``language`` is one of the page's (./config).
+export async function textsOrBuiltIn(
+  language: string,
+  report: (message: string) => void = (message) => console.error(message),
+  fetchFn: typeof fetch = fetch,
+): Promise<Texts> {
+  try {
+    return await loadTexts(language, fetchFn)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    report(`texts package not applied, built-in ${language} texts: ${message}`)
+    return builtIn(language)
+  }
 }

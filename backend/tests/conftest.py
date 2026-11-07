@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from pydantic import JsonValue
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
+from starlette.types import ASGIApp
 
 from app.config import Settings
 from app.database import ALEMBIC_INI, at_head, make_engine
@@ -147,7 +148,7 @@ def settings() -> Settings:
     )
 
 
-def client_for(app: FastAPI) -> Iterator[TestClient]:
+def client_for(app: ASGIApp) -> Iterator[TestClient]:
     with TestClient(app) as client:
         yield client
 
@@ -175,10 +176,9 @@ def report_app(
     head: str | None = None,
     checks: Mapping[str, Callable[[], Awaitable[bool]]] | None = None,
     details: Callable[[], Mapping[str, JsonValue]] | None = None,
-) -> FastAPI:
+) -> ASGIApp:
     """An app with a ``PrimerReport`` of the given checks and nothing else."""
-    app = FastAPI()
-    PrimerReport(
+    return PrimerReport(
         service="blank",
         release=RELEASE,
         commit=COMMIT,
@@ -190,8 +190,7 @@ def report_app(
         head_checks={"schema": at_head(head)} if head is not None else None,
         checks=checks,
         details=details,
-    ).install(app)
-    return app
+    ).install(FastAPI())
 
 
 @pytest.fixture

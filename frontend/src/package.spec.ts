@@ -407,6 +407,71 @@ describe('checkSkin', () => {
     expect(primer.checkSkin(skin(change)).problems.join('\n')).toContain(problem)
   })
 
+  // an attribute starts after a space of any kind, a slash or a closing
+  // quote of either kind; a link is out of the file quoted or not
+  it.each([
+    ['after a space', '<svg onload="x()"></svg>', 'an event handler'],
+    ['after a newline', '<svg\nonload="x()"></svg>', 'an event handler'],
+    ['after a tab, in capitals', '<svg\tONLOAD="x()"></svg>', 'an event handler'],
+    ['after a slash', '<svg><g/onload=x() /></svg>', 'an event handler'],
+    ['after a double quote', '<svg x="1"onload="x()"></svg>', 'an event handler'],
+    ['after a single quote', "<svg x='1'onload='x()'></svg>", 'an event handler'],
+    ['a space before =', '<svg><g onclick ="x()"/></svg>', 'an event handler'],
+    ['a link in double quotes', '<svg><image href="https://x.test/a"/></svg>', 'a link out'],
+    ['a link in single quotes', "<svg><image href='//x.test/a'/></svg>", 'a link out'],
+    ['a link without quotes', '<svg><image href=https://x.test/a /></svg>', 'a link out'],
+    ['an xlink:href without quotes', '<svg><use xlink:href=x.svg#a /></svg>', 'a link out'],
+    ['a link after a space in quotes', '<svg><a href=" http://x.test"/></svg>', 'a link out'],
+  ])('refuses an SVG with %s', (_name, svg, rule) => {
+    expect(primer.checkSkin(skin({ 'assets/logo.svg': svg })).problems).toContain(
+      `assets/logo.svg: has ${rule}${rule === 'a link out' ? ' of the file' : ''}`,
+    )
+  })
+
+  it.each([
+    ['a link inside it, quoted', '<svg><use href="#a"/><g id="a"/></svg>'],
+    ['a link inside it, unquoted', '<svg><use href=#a /><g id="a"/></svg>'],
+    ['an empty link', '<svg><a href=""/></svg>'],
+    [
+      '"on" inside a word and a text',
+      '<svg><g stroke-linejoin="round"/><text>on = off</text></svg>',
+    ],
+  ])('takes an SVG with %s', (_name, svg) => {
+    expect(primer.checkSkin(skin({ 'assets/logo.svg': svg })).problems).toEqual([])
+  })
+
+  // the good skin is 6 files and directories; an icons directory and n icons
+  // make it 7 + n
+  function withIcons(count: number): string {
+    const root = skin()
+    for (let n = 0; n < count; n += 1) {
+      write(root, `assets/icons/i-${String(n).padStart(3, '0')}.svg`, LOGO)
+    }
+    return root
+  }
+
+  it('takes a package of 512 files and directories', () => {
+    expect(primer.checkSkin(withIcons(505)).problems).toEqual([])
+  })
+
+  it('refuses the 513th file or directory by its name and stops the walk', () => {
+    const problems = primer.checkSkin(withIcons(506)).problems
+    expect(problems[0]).toBe(
+      'tokens/typography.tokens.json: past 512 files and directories: a package is smaller',
+    )
+    // the file past the limit is not read: its tokens are missing
+    expect(problems).toContain('tokens/: font.family.base: a required token is missing')
+  })
+
+  it('names only the first entry past the limit: the walk stops there', () => {
+    const past = primer
+      .checkSkin(withIcons(507))
+      .problems.filter((problem) => problem.includes('past 512'))
+    expect(past).toEqual([
+      'tokens/color.tokens.json: past 512 files and directories: a package is smaller',
+    ])
+  })
+
   it('takes an SVG with a link inside itself, a comment and an XML declaration', () => {
     const svg = '<?xml version="1.0"?>\n<!-- logo -->\n<svg><use href="#a"/><g id="a"/></svg>'
     const result = primer.checkSkin(
@@ -536,6 +601,58 @@ describe('the engine', () => {
       200,
       { en: { api_label: 'A', config_error: 'E', title: 'T' }, ru: { title: 'Т' } },
     ])
+  })
+
+  // a dictionary of strings, as nginx's shared one: a missing key is undefined
+  function dictionary(): Map<string, string> & { sets: number } {
+    const map = new Map<string, string>() as Map<string, string> & { sets: number }
+    map.sets = 0
+    const set = map.set.bind(map)
+    map.set = (key: string, value: string) => {
+      map.sets += 1
+      return set(key, value)
+    }
+    return map
+  }
+
+  it('checks a package once and answers again from the dictionary', () => {
+    const cache = dictionary()
+    const root = skin()
+    const first = request()
+    primer.serveSkin(first, root, cache)
+    expect([first.status, cache.sets]).toEqual([200, 1])
+    // a defect planted in place is not seen: the answer is the kept one
+    write(root, 'assets/logo.svg', '<svg><script>x()</script></svg>')
+    const again = request()
+    primer.serveSkin(again, root, cache)
+    expect([again.status, again.body, cache.sets]).toEqual([200, first.body, 1])
+    // without the dictionary every request checks the package
+    const unkept = request()
+    primer.serveSkin(unkept, root)
+    expect(unkept.status).toBe(500)
+  })
+
+  it('keeps a refusal: 500 and its problems logged on every answer', () => {
+    const cache = dictionary()
+    const root = texts({ 'ui/de.json': '{}' })
+    const answers = [request(), request()]
+    answers.forEach((r) => primer.serveTexts(r, root, BUILT_IN, cache))
+    expect(answers.map((r) => [r.status, r.errors.length])).toEqual([
+      [500, 1],
+      [500, 1],
+    ])
+    expect(cache.sets).toBe(1)
+  })
+
+  it("checks again when the package's root changes: a new key", () => {
+    const cache = dictionary()
+    const root = texts()
+    const first = request()
+    primer.serveTexts(first, root, BUILT_IN, cache)
+    write(root, 'notes.txt', 'x')
+    const again = request()
+    primer.serveTexts(again, root, BUILT_IN, cache)
+    expect([first.status, again.status, cache.sets]).toEqual([200, 500, 2])
   })
 
   it('refuses an invalid package with 500 and logs its problems', () => {

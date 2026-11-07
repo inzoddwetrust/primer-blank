@@ -146,3 +146,94 @@ def test_without_packages_the_page_keeps_its_own_theme_and_texts(
     assert status == 200 and b"--" not in body, body
     assert _get(container, "/texts.json")[:2] == (200, b"{}")
     assert _get(container, "/skin/assets/logo.svg")[0] == 404
+
+
+def _skin_with_logo(skin: Path, at: Path, inside: str) -> Path:
+    """A copy of ``skin`` at ``at`` whose logo has ``inside`` before ``</svg>``."""
+    shutil.copytree(skin, at, ignore=shutil.ignore_patterns(".git"))
+    logo = at / "assets" / "logo.svg"
+    body = logo.read_text(encoding="utf-8")
+    assert body.count("</svg>") == 1, body
+    logo.write_text(body.replace("</svg>", f"{inside}</svg>"), encoding="utf-8")
+    return at
+
+
+def test_probe_DM_74_svg_handler_and_unquoted_href_refused(
+    frontend_runtime: str, skin: Path, tmp_path: Path
+) -> None:
+    """validate-skin of the image refuses an event handler after a slash
+    (``<g/onload=…>``; a root ``<svg/onload=…>`` is not an SVG image at all)
+    and a link out of the file without quotes, each by its file and rule; a
+    link inside the file is taken."""
+    refused = {
+        '<g/onload="x()"/>': "validate-skin: assets/logo.svg: has an event handler",
+        "<image href=https://x.test/a.png />": (
+            "validate-skin: assets/logo.svg: has a link out of the file"
+        ),
+    }
+    for number, (inside, problem) in enumerate(refused.items()):
+        given = _skin_with_logo(skin, tmp_path / f"refused-{number}", inside)
+        done = run_once(
+            frontend_runtime, (_bind(given, "/srv/skin"),), "validate-skin", "/srv/skin"
+        )
+        assert done.returncode != 0, done.stdout
+        assert problem in done.stdout.splitlines(), done.stdout
+    taken = _skin_with_logo(skin, tmp_path / "taken", '<use href="#a"/><g id="a"/>')
+    done = run_once(
+        frontend_runtime, (_bind(taken, "/srv/skin"),), "validate-skin", "/srv/skin"
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "validate-skin: /srv/skin: ok" in done.stdout
+
+
+ASSET_HEADERS = {
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-cache",
+}
+
+
+def _headers(container: str, path: str) -> tuple[int, dict[str, str]]:
+    address = docker("port", container, "80/tcp").stdout.splitlines()[0].strip()
+    try:
+        with urllib.request.urlopen(f"http://{address}{path}", timeout=5) as answer:
+            return answer.status, {name: answer.headers[name] for name in ASSET_HEADERS}
+    except urllib.error.HTTPError as error:
+        return error.code, {name: error.headers[name] for name in ASSET_HEADERS}
+
+
+def test_the_skin_assets_run_nothing_when_opened(
+    frontend_runtime: str, skin: Path
+) -> None:
+    """``/skin/assets/``: a policy that runs and loads nothing, and nosniff,
+    on an image and on a missing one alike."""
+    container = run_detached(frontend_runtime, API, (_bind(skin, "/srv/skin"),))
+    wait_http(container, "/config.json")
+    assert _headers(container, "/skin/assets/logo.svg") == (200, ASSET_HEADERS)
+    assert _headers(container, "/skin/assets/none.svg") == (404, ASSET_HEADERS)
+
+
+def test_a_package_is_checked_once_per_container(
+    frontend_runtime: str, skin: Path, tmp_path: Path
+) -> None:
+    """The skin is checked on its first request and its answer kept: a defect
+    planted in the mounted files afterwards is not seen by that container. A
+    new container -- what a new version of the package gets -- checks again
+    and refuses it."""
+    given = tmp_path / "skin"
+    shutil.copytree(skin, given, ignore=shutil.ignore_patterns(".git"))
+    container = run_detached(frontend_runtime, API, (_bind(given, "/srv/skin"),))
+    wait_http(container, "/config.json")
+    first = _get(container, "/skin.css")
+    assert first[0] == 200, first
+    logo = given / "assets" / "logo.svg"
+    logo.write_text(
+        logo.read_text(encoding="utf-8").replace(
+            "</svg>", "<script>x()</script></svg>"
+        ),
+        encoding="utf-8",
+    )
+    assert _get(container, "/skin.css") == first
+    fresh = run_detached(frontend_runtime, API, (_bind(given, "/srv/skin"),))
+    wait_http(fresh, "/config.json")
+    assert _get(fresh, "/skin.css")[0] == 500

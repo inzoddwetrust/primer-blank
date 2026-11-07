@@ -9,6 +9,7 @@ import {
   chooseLanguage,
   loadTexts,
   parseTexts,
+  textsOrBuiltIn,
 } from './texts'
 
 function answer(status: number, body: string): typeof fetch {
@@ -103,5 +104,32 @@ describe('loadTexts', () => {
   it('refuses an answer that is not 200 or not JSON', async () => {
     await expect(loadTexts('en', answer(500, 'invalid'))).rejects.toThrow('answered 500')
     await expect(loadTexts('en', answer(200, '<html>'))).rejects.toThrow('is not JSON')
+  })
+})
+
+describe('textsOrBuiltIn', () => {
+  it("gives the package's texts when it is read", async () => {
+    const report = vi.fn()
+    const texts = await textsOrBuiltIn('ru', report, answer(200, '{"ru":{"title":"Праймер"}}'))
+    expect(texts).toEqual({ ...BUILT_IN.ru, title: 'Праймер' })
+    expect(report).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['not JSON', answer(200, '{'), 'is not JSON'],
+    ['refused by the container', answer(500, 'invalid'), 'answered 500'],
+    ['not texts', answer(200, '{"ru":{"title":1}}'), 'ru.title is not a string'],
+    [
+      'no answer at all',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }) as unknown as typeof fetch,
+      'Failed to fetch',
+    ],
+  ])('gives the built-in texts of the language for an answer %s', async (_name, fetchFn, why) => {
+    const report = vi.fn()
+    expect(await textsOrBuiltIn('ru', report, fetchFn)).toEqual(BUILT_IN.ru)
+    expect(report).toHaveBeenCalledOnce()
+    expect(report.mock.calls[0]?.[0]).toContain(why)
   })
 })

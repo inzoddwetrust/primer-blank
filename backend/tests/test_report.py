@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping
 import pytest
 from fastapi import FastAPI
 from pydantic import JsonValue, ValidationError
+from starlette.types import ASGIApp
 
 from primer_report import DETAILS_LIMIT, Health, Limits, PrimerReport, Seams
 from tests.conftest import (
@@ -59,7 +60,7 @@ def builder(value: object) -> Builder:
     return build
 
 
-def health_of(app: FastAPI) -> dict[str, object]:
+def health_of(app: ASGIApp) -> dict[str, object]:
     for client in client_for(app):
         response = client.get("/health")
         assert response.status_code == 200
@@ -274,8 +275,7 @@ def test_a_head_check_that_raises_is_error_and_health_is_200() -> None:
     def judge(revision: str) -> bool:
         raise ValueError(revision)
 
-    app = FastAPI()
-    PrimerReport(
+    app = PrimerReport(
         service="blank",
         release=RELEASE,
         commit=COMMIT,
@@ -285,7 +285,7 @@ def test_a_head_check_that_raises_is_error_and_health_is_200() -> None:
         seams=Seams(provides=[], requires_satisfied=True),
         db=revision,
         head_checks={"schema": judge},
-    ).install(app)
+    ).install(FastAPI())
     body = health_of(app)
     assert body["checks"] == {"db": "ok", "schema": "error"}
     assert body["alembic_head"] == "0001"

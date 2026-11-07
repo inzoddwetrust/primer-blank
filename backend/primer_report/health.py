@@ -40,6 +40,7 @@ from pydantic import (
     ValidationError,
     field_validator,
 )
+from starlette.types import ASGIApp
 
 from primer_report.logs import RequestIdMiddleware
 
@@ -219,10 +220,11 @@ class PrimerReport:
             responses={503: {"model": Ready}},
         )
 
-    def install(self, app: FastAPI) -> None:
-        """Mount ``/health``, ``/ready`` and the request-id middleware."""
+    def install(self, app: FastAPI) -> ASGIApp:
+        """Mount ``/health`` and ``/ready``; return ``app`` inside the
+        request-id middleware -- the application the factory returns."""
         app.include_router(self.router)
-        app.add_middleware(RequestIdMiddleware)
+        return RequestIdMiddleware(app)
 
     async def _measure(self) -> dict[str, CheckState]:
         """Every check once, at the same time; the revision read is kept."""

@@ -1,4 +1,8 @@
-"""The ASGI application: ``uvicorn --factory app.main:create_app``."""
+"""The ASGI application: ``uvicorn --factory app.main:create_app``.
+
+The factory returns the app inside the request-id middleware of
+``primer_report`` (``PrimerReport.install``), not the ``FastAPI`` object.
+"""
 
 import hmac
 import logging
@@ -7,6 +11,7 @@ from contextlib import asynccontextmanager
 from functools import partial
 
 from fastapi import FastAPI, Request, Response
+from starlette.types import ASGIApp
 
 from app.config import Settings
 from app.database import at_head, database_url, make_engine, read_revision, script_head
@@ -46,7 +51,7 @@ def requires_satisfied(settings: Settings) -> bool:
 logger = logging.getLogger(__name__)
 
 
-def create_app(settings: Settings | None = None, url: str | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, url: str | None = None) -> ASGIApp:
     """Build the app; settings and database URL default to the environment."""
     settings = settings or Settings()
     engine = make_engine(url or database_url())
@@ -81,7 +86,7 @@ def create_app(settings: Settings | None = None, url: str | None = None) -> Fast
         head_checks={"schema": at_head(head)},
         details=lambda: {"script_head": head},
     )
-    report.install(app)
+    wrapped = report.install(app)
 
     @app.post(WEBHOOK, status_code=204)
     async def webhook(request: Request) -> Response:
@@ -92,4 +97,4 @@ def create_app(settings: Settings | None = None, url: str | None = None) -> Fast
             return Response(status_code=401, headers={"WWW-Authenticate": "Bearer"})
         return Response(status_code=204)
 
-    return app
+    return wrapped

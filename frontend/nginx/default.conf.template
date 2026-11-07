@@ -10,10 +10,14 @@
 # unknown variable and refuses to start: the container does not come up.
 #
 # The instance's packages (primer.yaml packages, apply: runtime) are mounted
-# read-only at /srv/skin and /srv/texts; nginx/package.js serves them, checked
-# on every request, as /skin.css and /texts.json -- an empty skin.css and {}
-# when no package is mounted: the page keeps its built-in theme and texts.
-# The module is loaded in nginx.conf (load_module, the Dockerfile).
+# read-only at /srv/skin and /srv/texts; nginx/package.js serves them as
+# /skin.css and /texts.json, each checked once and its answer kept in the
+# shared dictionary primer -- an empty skin.css and {} when no package is
+# mounted: the page keeps its built-in theme and texts. The module is loaded
+# in nginx.conf (load_module, the Dockerfile).
+
+# Two answers, a few kilobytes each; the zone lives as long as the container.
+js_shared_dict_zone zone=primer:1m;
 
 server {
     listen 80;
@@ -39,9 +43,14 @@ server {
     }
 
     # The skin's images, as the package has them; none without a package.
+    # An SVG opened by its address runs nothing and loads nothing: the
+    # package's check refuses scripts and links, and this policy holds when a
+    # pattern of the check is passed by.
     location ^~ /skin/assets/ {
         alias /srv/skin/assets/;
         add_header Cache-Control "no-cache" always;
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; sandbox" always;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 
     # Hashed build output: a missing file is a 404, never the page.

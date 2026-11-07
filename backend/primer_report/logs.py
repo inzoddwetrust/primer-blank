@@ -97,6 +97,11 @@ def configure_logging(config_file: Path) -> None:
     logging.config.dictConfig(json.loads(config_file.read_text(encoding="utf-8")))
 
 
+FAILED_EVENT = "request.failed"
+
+logger = logging.getLogger(__name__)
+
+
 class RequestIdMiddleware:
     """Bind the request id for the request and echo it in the response.
 
@@ -104,6 +109,14 @@ class RequestIdMiddleware:
     is replaced by a fresh uuid. Of several ``X-Request-ID`` headers the last
     one is taken -- the one the nearest proxy wrote -- and judged alone: a
     malformed last one is replaced, never an earlier one used instead.
+
+    It wraps the whole application, outside the framework's error middleware
+    (``PrimerReport.install`` returns it for the factory to return), so the
+    ``500`` that middleware sends carries the id too. An exception the
+    application lets out is written here, inside the request, as one
+    ``FAILED_EVENT`` line at level error with its traceback, and goes no
+    further: by then the error middleware has sent the response, and the
+    server's own line for it would come after the request, with no id.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -129,5 +142,12 @@ class RequestIdMiddleware:
         token = REQUEST_ID.set(request_id)
         try:
             await self.app(scope, receive, send_with_id)
+        except Exception:
+            logger.exception(
+                "%s %s failed",
+                scope.get("method", ""),
+                scope.get("path", ""),
+                extra={"event": FAILED_EVENT},
+            )
         finally:
             REQUEST_ID.reset(token)
