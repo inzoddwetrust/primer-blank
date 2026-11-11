@@ -4,8 +4,16 @@ The smallest product on the fixed stack of Primer: FastAPI, SQLAlchemy
 (async), Postgres, alembic and Vue 3. The deploy machine `pridem` installs it
 from `primer.yaml`; a new project starts as a copy of it.
 
-- `primer.yaml` -- what the machine installs: one stack, edition `core`, the
-  sources of its environment, routes for the frontend and the API.
+- `primer.yaml` -- what the machine installs: the stack `primer-blank`,
+  edition `core`, the sources of its environment, routes for the frontend and
+  the API; and `primer-blank-files` (`deploy/files-compose.yml`), the files of
+  the instance's people: `persistent: true`, its volume `files` outlives
+  `destroy` and `reinstall`, only `destroy --all` wipes it.
+- `verbs` of `primer.yaml` -- the project's verbs, run by the machine in their
+  service (`pridem verb <name> <arg>=<value> ...`): `set-setting key=<k>
+  value=<v>` in `app` (`python -m app.cli`, `backend/app/cli.py`), destructive
+  -- it asks `--confirm <server.name>`; `count-settings` in `postgres`, on the
+  role `test` only.
 - `dependencies` of `primer.yaml` -- the machine's test service
   `primer-blank-service`, in every edition: the product takes three seams of
   it (`SERVICE_API_URL`, `SERVICE_TOKEN`, `SERVICE_KEY`), gives it
@@ -42,5 +50,6 @@ from `primer.yaml`; a new project starts as a copy of it.
 - `probes/` -- checks of the built images; they need docker.
 
 CI (`.github/workflows/ci.yml`) runs four jobs: backend, frontend, image and
-check (`primer.yaml` through the machine's loader, and `pridem check` of the
-repository with the published packages).
+check (`primer.yaml` through the machine's loader, `pridem check` of the
+repository with the published packages, and the pins of the images of both
+compose files).

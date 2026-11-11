@@ -18,8 +18,9 @@ permissions:
 
 env:
   # The machine whose loader and pridem check read primer.yaml (DM-88: pridem
-  # check runs as the runner's user, with HOME and DOCKER_CONFIG of that user).
-  PRIDEM_COMMIT: c4b380041b3a8937dd1ebd1db439e12b159176a1
+  # check runs as the runner's user, with HOME and DOCKER_CONFIG of that user;
+  # DM-86: the service of a verb).
+  PRIDEM_COMMIT: 40fa3b6ddfc67b0b3198dc5798980dfeb4fd561e
   # The published packages of the blank (DM-58): public repositories of
   # PACKAGES_OWNER, cloned over https by their tags, each checkout checked
   # against the commit pinned beside its tag (ci/clone_packages.py).

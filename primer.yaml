@@ -22,6 +22,9 @@ stacks:
     test:     { run: python -m pytest tests/ --junitxml=/tmp/junit.xml, target: test }
     seeds:
       bootstrap: { run: python -m app.seed bootstrap, when: install }
+  primer-blank-files:                 # files of the instance's people: they outlive destroy (rule 14)
+    compose: deploy/files-compose.yml
+    persistent: true
 
 env:
   POSTGRES_PASSWORD: { source: minted }
@@ -49,6 +52,17 @@ packages:
     validate: validate-texts <dir>
     mount:
       - { service: frontend, path: /srv/texts }
+
+verbs:                                # run by the machine in their service (protocol 8.2)
+  set-setting:                        # a row of app_settings; destructive -- --confirm <server.name>
+    run: python -m app.cli set-setting
+    args: [key, value]
+    service: app
+    destructive: true
+  count-settings:                     # in the database's own container, on test only
+    run: "psql -U blank -d blank -tAc 'SELECT count(*) FROM app_settings'"
+    service: postgres
+    roles: [test]
 
 host:
   domains: [frontend, api]

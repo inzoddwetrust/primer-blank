@@ -1,0 +1,18 @@
+# The stack of the instance's files: persistent -- its volume outlives destroy
+# and reinstall (contract 3 rule 14); only destroy --all wipes it. The image is
+# the database's, already on the box: a shell and a directory are all it needs.
+services:
+  files:
+    image: postgres:16-alpine@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
+    command: ["sh", "-c", "while sleep 3600; do :; done"]
+    volumes:
+      - files:/srv/files
+    healthcheck:
+      test: ["CMD", "test", "-d", "/srv/files"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  files: {}

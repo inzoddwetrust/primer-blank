@@ -9,9 +9,10 @@ A tag can be moved by whoever can push it; a digest cannot. A reference is
 makes a pull unable to move it. Changing the version means changing both.
 
 Read: ``FROM`` of each Dockerfile (a stage built earlier in the same file is
-not an image and is skipped), ``image:`` of the compose file and of the CI
-workflow. A Dockerfile without a single pulled image is a problem too: a check
-that finds nothing to check proves nothing.
+not an image and is skipped), ``image:`` of the compose files -- the
+product's and the persistent stack's (DM-86) -- and of the CI workflow. A
+Dockerfile without a single pulled image is a problem too: a check that finds
+nothing to check proves nothing.
 """
 
 import argparse
@@ -25,7 +26,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 DOCKERFILES = ("backend/Dockerfile", "frontend/Dockerfile")
-YAML_FILES = ("docker-compose.yml", ".github/workflows/ci.yml")
+YAML_FILES = (
+    "docker-compose.yml",
+    "deploy/files-compose.yml",
+    ".github/workflows/ci.yml",
+)
 
 PINNED = re.compile(r"^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$")
 FROM_LINE = re.compile(
