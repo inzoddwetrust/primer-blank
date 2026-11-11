@@ -17,9 +17,9 @@ permissions:
   contents: read
 
 env:
-  # The machine whose loader and pridem check read primer.yaml (DM-67: the
-  # derive_env step of a stack with derived values).
-  PRIDEM_COMMIT: a93650e4165301651bbf820e87563c489f4a3451
+  # The machine whose loader and pridem check read primer.yaml (DM-88: pridem
+  # check runs as the runner's user, with HOME and DOCKER_CONFIG of that user).
+  PRIDEM_COMMIT: c4b380041b3a8937dd1ebd1db439e12b159176a1
   # The published packages of the blank (DM-58): public repositories of
   # PACKAGES_OWNER, cloned over https by their tags, each checkout checked
   # against the commit pinned beside its tag (ci/clone_packages.py).
